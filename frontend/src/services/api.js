@@ -15,8 +15,8 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  requestOtp: (phone) => request("/auth/request-otp", { method: "POST", body: JSON.stringify({ phone }) }),
-  verifyOtp: (payload) => request("/auth/verify-otp", { method: "POST", body: JSON.stringify(payload) }),
+  signUp: (payload) => request("/auth/signup", { method: "POST", body: JSON.stringify(payload) }),
+  login: (payload) => request("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
   listSessions: () => request("/sessions"),
   getSessionQr: (sessionId) => request(`/sessions/${sessionId}/qr`),
   markAttendance: (token, payload) =>

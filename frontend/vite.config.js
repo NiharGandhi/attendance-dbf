@@ -11,7 +11,7 @@ export default defineConfig({
       manifest: {
         name: "DBF Attendance",
         short_name: "DBF Attendance",
-        description: "Offline-first attendance for weekly satsang sessions",
+        description: "Attendance for weekly satsang sessions",
         theme_color: "#0b3d2e",
         background_color: "#f7f7f7",
         display: "standalone",

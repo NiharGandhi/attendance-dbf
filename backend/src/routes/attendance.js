@@ -83,7 +83,7 @@ export function attendanceRoutes(db) {
 
   router.get("/session/:id", async (req, res) => {
     const records = await db.all(
-      `SELECT attendance.*, users.phone, users.name
+      `SELECT attendance.*, users.phone, users.email, users.name, users.mahatma_id
        FROM attendance
        JOIN users ON users.id = attendance.user_id
        WHERE attendance.session_id = ?

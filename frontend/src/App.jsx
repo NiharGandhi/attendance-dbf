@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import QRCodeScanner from "./components/QRCodeScanner.jsx";
 import { api } from "./services/api.js";
 
-const defaultUserState = { phone: "", otp: "", requestId: "" };
+const defaultSignUp = { name: "", email: "", password: "", mahatmaId: "" };
+const defaultLogin = { email: "", password: "" };
 
 export default function App() {
   const [userToken, setUserToken] = useState(() => localStorage.getItem("userToken") || "");
   const [adminToken, setAdminToken] = useState(() => localStorage.getItem("adminToken") || "");
-  const [userForm, setUserForm] = useState(defaultUserState);
+  const [signUpForm, setSignUpForm] = useState(defaultSignUp);
+  const [loginForm, setLoginForm] = useState(defaultLogin);
   const [adminForm, setAdminForm] = useState({ username: "", password: "" });
   const [status, setStatus] = useState("");
   const [sessions, setSessions] = useState([]);
@@ -16,6 +18,7 @@ export default function App() {
   const [stats, setStats] = useState(null);
   const [manualEntry, setManualEntry] = useState({ sessionId: "", userId: "" });
   const [online, setOnline] = useState(navigator.onLine);
+  const [authMode, setAuthMode] = useState("signup");
 
   const activeView = useMemo(() => {
     if (adminToken) return "admin";
@@ -42,19 +45,34 @@ export default function App() {
     api.listSessions().then(({ sessions }) => setSessions(sessions)).catch(() => null);
   }, []);
 
-  async function requestOtp() {
+  async function handleSignUp() {
     setStatus("");
-    const { requestId } = await api.requestOtp(userForm.phone);
-    setUserForm((prev) => ({ ...prev, requestId }));
-    setStatus("OTP sent. Please check the console on the server.");
+    try {
+      const payload = {
+        name: signUpForm.name,
+        email: signUpForm.email,
+        password: signUpForm.password,
+        mahatmaId: signUpForm.mahatmaId || undefined,
+      };
+      const { token } = await api.signUp(payload);
+      localStorage.setItem("userToken", token);
+      setUserToken(token);
+      setStatus("Signup successful.");
+    } catch (error) {
+      setStatus(`Signup failed: ${error.message}`);
+    }
   }
 
-  async function verifyOtp() {
+  async function handleLogin() {
     setStatus("");
-    const { token } = await api.verifyOtp({ phone: userForm.phone, code: userForm.otp });
-    localStorage.setItem("userToken", token);
-    setUserToken(token);
-    setStatus("Login successful.");
+    try {
+      const { token } = await api.login(loginForm);
+      localStorage.setItem("userToken", token);
+      setUserToken(token);
+      setStatus("Login successful.");
+    } catch (error) {
+      setStatus(`Login failed: ${error.message}`);
+    }
   }
 
   function handleScanPayload(payload) {
@@ -142,7 +160,7 @@ export default function App() {
       <header className="header">
         <div>
           <h1>DBF Attendance</h1>
-          <p className="muted">Offline-first attendance for weekly satsang.</p>
+          <p className="muted">Online attendance for weekly satsang.</p>
         </div>
         <span className={`badge ${online ? "online" : "offline"}`}>{online ? "Online" : "Offline"}</span>
       </header>
@@ -151,25 +169,79 @@ export default function App() {
 
       {activeView === "login" && (
         <section className="card">
-          <h2>User Login</h2>
-          <label>
-            Phone number
-            <input
-              value={userForm.phone}
-              onChange={(event) => setUserForm({ ...userForm, phone: event.target.value })}
-              placeholder="e.g. +9715xxxxxxx"
-            />
-          </label>
-          <button onClick={requestOtp} className="primary">Send OTP</button>
-          <label>
-            OTP code
-            <input
-              value={userForm.otp}
-              onChange={(event) => setUserForm({ ...userForm, otp: event.target.value })}
-              placeholder="Enter 6-digit code"
-            />
-          </label>
-          <button onClick={verifyOtp} className="secondary">Verify & Login</button>
+          <div className="tab-row">
+            <button
+              onClick={() => setAuthMode("signup")}
+              className={authMode === "signup" ? "tab active" : "tab"}
+            >
+              Sign Up
+            </button>
+            <button
+              onClick={() => setAuthMode("login")}
+              className={authMode === "login" ? "tab active" : "tab"}
+            >
+              Login
+            </button>
+          </div>
+
+          {authMode === "signup" ? (
+            <div className="stack">
+              <label>
+                Full name
+                <input
+                  value={signUpForm.name}
+                  onChange={(event) => setSignUpForm({ ...signUpForm, name: event.target.value })}
+                  placeholder="Your name"
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={signUpForm.email}
+                  onChange={(event) => setSignUpForm({ ...signUpForm, email: event.target.value })}
+                  placeholder="name@example.com"
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={signUpForm.password}
+                  onChange={(event) => setSignUpForm({ ...signUpForm, password: event.target.value })}
+                />
+              </label>
+              <label>
+                Mahatma ID (optional)
+                <input
+                  value={signUpForm.mahatmaId}
+                  onChange={(event) => setSignUpForm({ ...signUpForm, mahatmaId: event.target.value })}
+                  placeholder="If you have a Mahatma ID"
+                />
+              </label>
+              <button onClick={handleSignUp} className="primary">Create Account</button>
+            </div>
+          ) : (
+            <div className="stack">
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={loginForm.email}
+                  onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={loginForm.password}
+                  onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                />
+              </label>
+              <button onClick={handleLogin} className="secondary">Login</button>
+            </div>
+          )}
 
           <div className="divider" />
 
@@ -278,7 +350,9 @@ export default function App() {
             <ul className="list">
               {attendanceList.map((record) => (
                 <li key={record.id}>
-                  {record.marked_at} - {record.phone} {record.name ? `(${record.name})` : ""}
+                  {record.marked_at} - {record.phone || record.email}{" "}
+                  {record.name ? `(${record.name})` : ""}
+                  {record.mahatma_id ? ` - ${record.mahatma_id}` : ""}
                 </li>
               ))}
             </ul>

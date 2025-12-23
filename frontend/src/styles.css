@@ -151,3 +151,20 @@ button.link {
   display: grid;
   gap: 10px;
 }
+
+.tab-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tab {
+  flex: 1;
+  background: #f0f4f2;
+  color: #0b3d2e;
+}
+
+.tab.active {
+  background: #0b3d2e;
+  color: white;
+}

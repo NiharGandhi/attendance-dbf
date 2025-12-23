@@ -53,7 +53,7 @@ export function adminRoutes(db) {
     }
 
     const records = await db.all(
-      `SELECT attendance.marked_at, attendance.method, users.phone, users.name
+      `SELECT attendance.marked_at, attendance.method, users.phone, users.email, users.name, users.mahatma_id
        FROM attendance
        JOIN users ON users.id = attendance.user_id
        WHERE attendance.session_id = ?
@@ -61,7 +61,7 @@ export function adminRoutes(db) {
       sessionId
     );
 
-    const headers = ["marked_at", "method", "phone", "name"];
+    const headers = ["marked_at", "method", "phone", "email", "name", "mahatma_id"];
     const rows = [headers.join(",")];
     for (const record of records) {
       const values = headers.map((key) => {

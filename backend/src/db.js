@@ -13,7 +13,10 @@ export async function openDb() {
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
-      phone TEXT UNIQUE NOT NULL,
+      phone TEXT UNIQUE,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      mahatma_id TEXT UNIQUE,
       name TEXT,
       age INTEGER,
       gender TEXT,
@@ -60,5 +63,23 @@ export async function openDb() {
     );
   `);
 
+  await ensureUserColumns(db);
+
   return db;
+}
+
+async function ensureUserColumns(db) {
+  const columns = await db.all(`PRAGMA table_info(users)`);
+  const names = new Set(columns.map((column) => column.name));
+  if (!names.has("email")) {
+    await db.exec(`ALTER TABLE users ADD COLUMN email TEXT`);
+    await db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email)`);
+  }
+  if (!names.has("password_hash")) {
+    await db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
+  }
+  if (!names.has("mahatma_id")) {
+    await db.exec(`ALTER TABLE users ADD COLUMN mahatma_id TEXT`);
+    await db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_mahatma_unique ON users(mahatma_id)`);
+  }
 }

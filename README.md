@@ -1,6 +1,6 @@
-# Dada Bhagwan Foundation UAE - Attendance System (Offline-first)
+# Dada Bhagwan Foundation UAE - Attendance System
 
-Offline-first, QR-based attendance system for weekly satsang sessions. Designed to work over local hall Wi-Fi, handle high concurrency, and sync to the cloud later.
+Online QR-based attendance system for weekly satsang sessions. Designed for quick adoption with a local server and PWA client, with room to add offline and cloud sync later.
 
 ## Project Structure
 ```
@@ -10,19 +10,18 @@ frontend/  # React + Vite PWA client
 
 ## Architecture (Textual)
 ```
-[ PWA (React + Vite + Service Worker) ]
-    | LAN HTTP
+[ PWA (React + Vite) ]
+    | LAN/Internet HTTP
     v
 [ Local Server (Node.js + Express) ]
     | SQLite (users, sessions, attendance)
     | QR token rotation (5 min window)
-    | OTP mock (console)
     v
 [ Sync Adapter Stub ] -> (future cloud database)
 ```
 
 ## Database Schema (SQLite)
-- `users`: id, phone, name, age, gender, location
+- `users`: id, email, password_hash, name, mahatma_id (optional), age, gender, location
 - `sessions`: id, date, start/end time
 - `attendance`: id, user_id, session_id, marked_at, method
 - `session_tokens`: stores generated tokens if you want to persist
@@ -32,8 +31,8 @@ frontend/  # React + Vite PWA client
 Base URL: `http://localhost:4000/api`
 
 ### Auth
-- `POST /auth/request-otp` → `{ phone }` → logs OTP to server console
-- `POST /auth/verify-otp` → `{ phone, code }` → `{ token, user }`
+- `POST /auth/signup` → `{ name, email, password, mahatmaId? }` → `{ token, user }`
+- `POST /auth/login` → `{ email, password }` → `{ token, user }`
 
 ### Sessions
 - `GET /sessions`
@@ -87,13 +86,11 @@ VITE_API_BASE=http://localhost:4000/api
 ```
 
 ## Notes
-- OTP is mocked (printed to console) for offline testing.
-- QR tokens rotate every 5 minutes.
+- Mahatma ID is optional; users can sign up with name/email/password alone.
 - Attendance marking is idempotent via `(user_id, session_id)` unique constraint.
-- PWA assets are cached for offline use; background sync is stubbed.
+- QR tokens rotate every 5 minutes.
 
 ## Next Steps
-- Implement real SMS provider for OTP
 - Cloud sync implementation
 - Local network discovery of server
 - Multilingual UI (Hindi/Gujarati)
