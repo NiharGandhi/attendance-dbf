@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import "express-async-errors";
 
 import { openDb } from "./db.js";
 import { authRoutes } from "./routes/auth.js";
@@ -9,7 +10,7 @@ import { sessionRoutes } from "./routes/sessions.js";
 import { attendanceRoutes } from "./routes/attendance.js";
 import { adminRoutes } from "./routes/admin.js";
 import { syncRoutes } from "./routes/sync.js";
-import { requireUser, requireAdmin } from "./middleware/auth.js";
+import { attachSession, requireUser, requireAdmin } from "./middleware/auth.js";
 import { SyncAdapter } from "./sync/adapter.js";
 
 const PORT = process.env.PORT || 4000;
@@ -26,7 +27,7 @@ const syncAdapter = new SyncAdapter();
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
 app.use("/api/auth", authRoutes(db));
-app.use("/api/sessions", sessionRoutes(db));
+app.use("/api/sessions", attachSession, sessionRoutes(db));
 app.use("/api/attendance", requireUser, attendanceRoutes(db));
 
 app.use("/api/admin", adminRoutes(db));

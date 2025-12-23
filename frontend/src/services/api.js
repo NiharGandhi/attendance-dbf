@@ -1,13 +1,10 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000/api";
 
 async function request(path, options = {}) {
-  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  const config = {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
-    headers,
-  };
-
-  const response = await fetch(`${API_BASE}${path}`, config);
+  });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "unknown" }));

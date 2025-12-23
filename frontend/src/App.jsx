@@ -19,6 +19,7 @@ export default function App() {
   const [manualEntry, setManualEntry] = useState({ sessionId: "", userId: "" });
   const [online, setOnline] = useState(navigator.onLine);
   const [authMode, setAuthMode] = useState("signup");
+  const [sessionLoading, setSessionLoading] = useState(false);
 
   const activeView = useMemo(() => {
     if (adminToken) return "admin";
@@ -44,6 +45,18 @@ export default function App() {
   useEffect(() => {
     api.listSessions().then(({ sessions }) => setSessions(sessions)).catch(() => null);
   }, []);
+
+  function getDeviceId() {
+    try {
+      const stored = localStorage.getItem("deviceId");
+      if (stored) return stored;
+      const generated = crypto.randomUUID ? crypto.randomUUID() : `device-${Date.now()}`;
+      localStorage.setItem("deviceId", generated);
+      return generated;
+    } catch (error) {
+      return crypto.randomUUID ? crypto.randomUUID() : `device-${Date.now()}`;
+    }
+  }
 
   async function handleSignUp() {
     setStatus("");
@@ -94,7 +107,7 @@ export default function App() {
       const response = await api.markAttendance(userToken, {
         sessionId: data.sessionId,
         token: data.token,
-        deviceId: navigator.userAgent,
+        deviceId: getDeviceId(),
       });
       if (response.status === "already_marked") {
         setStatus("Attendance already marked for this session.");
@@ -108,9 +121,13 @@ export default function App() {
 
   async function loginAdmin() {
     setStatus("");
-    const { token } = await api.adminLogin(adminForm);
-    localStorage.setItem("adminToken", token);
-    setAdminToken(token);
+    try {
+      const { token } = await api.adminLogin(adminForm);
+      localStorage.setItem("adminToken", token);
+      setAdminToken(token);
+    } catch (error) {
+      setStatus(`Admin login failed: ${error.message}`);
+    }
   }
 
   async function createSession(event) {
@@ -121,39 +138,51 @@ export default function App() {
       startTime: data.get("startTime"),
       endTime: data.get("endTime"),
     };
-    const { session } = await api.adminCreateSession(adminToken, payload);
-    setSessions((prev) => [session, ...prev]);
-    event.target.reset();
+    setSessionLoading(true);
+    try {
+      const { session } = await api.adminCreateSession(adminToken, payload);
+      setSessions((prev) => [session, ...prev]);
+      event.target.reset();
+      setStatus("Session created.");
+    } catch (error) {
+      setStatus(`Create session failed: ${error.message}`);
+    } finally {
+      setSessionLoading(false);
+    }
   }
 
   async function loadAttendance(sessionId) {
     setSelectedSession(sessionId);
-    const { attendance } = await api.adminListAttendance(adminToken, sessionId);
-    setAttendanceList(attendance);
-  }
-
-  async function loadStats() {
-    const summary = await api.adminStats(adminToken);
-    setStats(summary);
-  }
-
-  async function submitManual() {
-    await api.adminManualAttendance(adminToken, manualEntry);
-    setStatus("Manual attendance saved.");
-    if (manualEntry.sessionId) {
-      loadAttendance(manualEntry.sessionId);
+    try {
+      const { attendance } = await api.adminListAttendance(adminToken, sessionId);
+      setAttendanceList(attendance);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Failed to load attendance: ${error.message}`);
     }
   }
 
-  const [sessionQr, setSessionQr] = useState(null);
-
-  async function showQr(sessionId) {
-    const { qrDataUrl, token, validFrom, validTo } = await api.getSessionQr(sessionId);
-    setSessionQr({ qrDataUrl, token, validFrom, validTo, sessionId });
+  async function loadStats() {
+    try {
+      const summary = await api.adminStats(adminToken);
+      setStats(summary);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Failed to load stats: ${error.message}`);
+    }
   }
 
-  function closeQr() {
-    setSessionQr(null);
+  async function submitManual() {
+    try {
+      await api.adminManualAttendance(adminToken, manualEntry);
+      setStatus("Manual attendance saved.");
+      if (manualEntry.sessionId) {
+        await loadAttendance(manualEntry.sessionId);
+      }
+    } catch (error) {
+      console.error(error);
+      setStatus(`Manual attendance failed: ${error.message}`);
+    }
   }
 
   function logout() {
@@ -317,7 +346,9 @@ export default function App() {
               <input name="date" type="date" required />
               <input name="startTime" type="time" required />
               <input name="endTime" type="time" required />
-              <button type="submit" className="primary">Create</button>
+              <button type="submit" className="primary" disabled={sessionLoading}>
+                {sessionLoading ? "Creating..." : "Create"}
+              </button>
             </form>
           </div>
 
@@ -344,30 +375,14 @@ export default function App() {
             <h3>Sessions</h3>
             <ul className="list">
               {sessions.map((session) => (
-                <li key={session.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <button onClick={() => loadAttendance(session.id)} className="link" style={{ textAlign: "left" }}>
-                    {session.date} <br /> <small>{session.start_time} - {session.end_time}</small>
-                  </button>
-                  <button onClick={() => showQr(session.id)} style={{ fontSize: "12px", padding: "6px 10px" }}>
-                    Show QR
+                <li key={session.id}>
+                  <button onClick={() => loadAttendance(session.id)} className="link">
+                    {session.date} {session.start_time} - {session.end_time}
                   </button>
                 </li>
               ))}
             </ul>
           </div>
-
-          {sessionQr && (
-            <div className="card" style={{ textAlign: "center" }}>
-              <div className="card-header">
-                <h3>Session QR</h3>
-                <button onClick={closeQr} className="link">Close</button>
-              </div>
-              <img src={sessionQr.qrDataUrl} alt="Session QR" style={{ width: "100%", maxWidth: "300px" }} />
-              <p className="muted" style={{ fontSize: "10px", wordBreak: "break-all" }}>
-                Token: {sessionQr.token}
-              </p>
-            </div>
-          )}
 
           <div className="card">
             <h3>Attendance</h3>

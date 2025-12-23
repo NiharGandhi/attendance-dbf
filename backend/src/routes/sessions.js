@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "../utils/time.js";
+
+function requireSessionWriter(req, res, next) {
+  if (req.user || req.admin) {
+    return next();
+  }
+  return res.status(401).json({ error: "unauthorized" });
+}
 import { generateToken, generateQrDataUrl } from "../utils/qr.js";
 
 export function sessionRoutes(db) {
@@ -11,7 +18,7 @@ export function sessionRoutes(db) {
     return res.json({ sessions });
   });
 
-  router.post("/", async (req, res) => {
+  router.post("/", requireSessionWriter, async (req, res) => {
     const { date, startTime, endTime } = req.body || {};
     if (!date || !startTime || !endTime) {
       return res.status(400).json({ error: "missing_fields" });
@@ -40,7 +47,7 @@ export function sessionRoutes(db) {
     return res.json({ session });
   });
 
-  router.put("/:id", async (req, res) => {
+  router.put("/:id", requireSessionWriter, async (req, res) => {
     const { date, startTime, endTime } = req.body || {};
     const session = await db.get("SELECT * FROM sessions WHERE id = ?", req.params.id);
     if (!session) {

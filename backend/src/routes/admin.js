@@ -1,22 +1,48 @@
 import { Router } from "express";
-import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "../utils/time.js";
 import { storeAdminSession, requireAdmin } from "../middleware/auth.js";
+import { hashPassword, verifyPassword } from "../utils/password.js";
 
-const DEFAULT_ADMIN = {
-  username: process.env.ADMIN_USER || "admin",
-  password: process.env.ADMIN_PASSWORD || "admin123",
-};
+const isProduction = process.env.NODE_ENV === "production";
+const envAdminUser = process.env.ADMIN_USER || "";
+const envAdminPassword = process.env.ADMIN_PASSWORD || "";
+const generatedAdminPassword = !envAdminPassword && !isProduction ? `${uuidv4()}${uuidv4()}` : "";
+if (generatedAdminPassword) {
+  console.warn(
+    "Generated one-time admin password for local use. Store it securely:",
+    generatedAdminPassword
+  );
+}
 
-function hashPassword(password) {
-  return crypto.createHash("sha256").update(password).digest("hex");
+function isWeakPassword(password) {
+  if (!password || password.length < 12) return true;
+  const lower = password.toLowerCase();
+  const common = ["password", "admin", "admin123", "123456", "qwerty"];
+  return common.some((word) => lower.includes(word));
+}
+
+function ensureAdminConfig() {
+  if (isProduction && (!envAdminUser || !envAdminPassword)) {
+    throw new Error("ADMIN_USER and ADMIN_PASSWORD are required in production");
+  }
+}
+
+function getBootstrapPassword() {
+  if (envAdminPassword) {
+    if (isWeakPassword(envAdminPassword)) {
+      throw new Error("ADMIN_PASSWORD is too weak");
+    }
+    return envAdminPassword;
+  }
+  return generatedAdminPassword;
 }
 
 export function adminRoutes(db) {
   const router = Router();
 
   router.post("/login", async (req, res) => {
+    ensureAdminConfig();
     const { username, password } = req.body || {};
     if (!username || !password) {
       return res.status(400).json({ error: "missing_fields" });
@@ -25,17 +51,27 @@ export function adminRoutes(db) {
     const stored = await db.get("SELECT * FROM admins WHERE username = ?", username);
     if (!stored) {
       const id = uuidv4();
+      const configuredPassword = getBootstrapPassword();
+      if (envAdminUser && username !== envAdminUser) {
+        return res.status(401).json({ error: "invalid_credentials" });
+      }
+      if (configuredPassword && password !== configuredPassword) {
+        return res.status(401).json({ error: "invalid_credentials" });
+      }
+      if (configuredPassword && isWeakPassword(configuredPassword)) {
+        return res.status(400).json({ error: "weak_password" });
+      }
       await db.run(
         "INSERT INTO admins (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
         id,
-        DEFAULT_ADMIN.username,
-        hashPassword(DEFAULT_ADMIN.password),
+        username,
+        hashPassword(password),
         nowIso()
       );
     }
 
     const admin = await db.get("SELECT * FROM admins WHERE username = ?", username);
-    if (!admin || admin.password_hash !== hashPassword(password)) {
+    if (!admin || !verifyPassword(password, admin.password_hash)) {
       return res.status(401).json({ error: "invalid_credentials" });
     }
 

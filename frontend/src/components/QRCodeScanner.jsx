@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 export default function QRCodeScanner({ onScan }) {
   const videoRef = useRef(null);
+  const onScanRef = useRef(onScan);
   const [status, setStatus] = useState("idle");
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
 
   useEffect(() => {
     let stream;
@@ -23,10 +28,15 @@ export default function QRCodeScanner({ onScan }) {
       }
       setStatus("scanning");
       interval = setInterval(async () => {
-        if (!videoRef.current) return;
-        const barcodes = await detector.detect(videoRef.current);
-        if (barcodes.length > 0) {
-          onScan(barcodes[0].rawValue);
+        const video = videoRef.current;
+        if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        try {
+          const barcodes = await detector.detect(video);
+          if (barcodes.length > 0) {
+            onScanRef.current?.(barcodes[0].rawValue);
+          }
+        } catch (error) {
+          console.error("QR detection failed", error);
         }
       }, 1000);
     }
@@ -37,7 +47,7 @@ export default function QRCodeScanner({ onScan }) {
       if (interval) clearInterval(interval);
       if (stream) stream.getTracks().forEach((track) => track.stop());
     };
-  }, [onScan]);
+  }, []);
 
   if (status === "unsupported") {
     return <p className="muted">Camera scanning not supported on this device.</p>;

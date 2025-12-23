@@ -70,7 +70,7 @@ DB_PATH=./data.db
 QR_SECRET=local-dev-secret
 QR_WINDOW_MINUTES=5
 ADMIN_USER=admin
-ADMIN_PASSWORD=admin123
+ADMIN_PASSWORD=use-a-strong-password
 ```
 
 ### Frontend
@@ -89,6 +89,7 @@ VITE_API_BASE=http://localhost:4000/api
 - Mahatma ID is optional; users can sign up with name/email/password alone.
 - Attendance marking is idempotent via `(user_id, session_id)` unique constraint.
 - QR tokens rotate every 5 minutes.
+- In production, set strong `ADMIN_USER` and `ADMIN_PASSWORD` values.
 
 ## Next Steps
 - Cloud sync implementation

@@ -28,3 +28,15 @@ export function requireAdmin(req, res, next) {
   req.admin = adminSessions.get(token).admin;
   return next();
 }
+
+export function attachSession(req, _res, next) {
+  const auth = req.headers.authorization || "";
+  const token = auth.replace("Bearer ", "").trim();
+  if (token && userSessions.has(token)) {
+    req.user = userSessions.get(token).user;
+  }
+  if (token && adminSessions.has(token)) {
+    req.admin = adminSessions.get(token).admin;
+  }
+  return next();
+}

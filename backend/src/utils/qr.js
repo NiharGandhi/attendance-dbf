@@ -15,7 +15,12 @@ export function generateToken(sessionId, date = new Date()) {
 
 export function validateToken(sessionId, token, date = new Date()) {
   const { token: expected } = generateToken(sessionId, date);
-  return expected === token;
+  const expectedBuffer = Buffer.from(expected, "hex");
+  const tokenBuffer = Buffer.from(token || "", "hex");
+  if (expectedBuffer.length !== tokenBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(expectedBuffer, tokenBuffer);
 }
 
 export async function generateQrDataUrl(payload) {

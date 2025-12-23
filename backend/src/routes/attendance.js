@@ -22,7 +22,7 @@ export function attendanceRoutes(db) {
     }
 
     if (!validateToken(sessionId, token)) {
-      return res.status(401).json({ status: "invalid_token" });
+      return res.status(401).json({ error: "invalid_token" });
     }
 
     const existing = await db.get(
