@@ -145,6 +145,17 @@ export default function App() {
     }
   }
 
+  const [sessionQr, setSessionQr] = useState(null);
+
+  async function showQr(sessionId) {
+    const { qrDataUrl, token, validFrom, validTo } = await api.getSessionQr(sessionId);
+    setSessionQr({ qrDataUrl, token, validFrom, validTo, sessionId });
+  }
+
+  function closeQr() {
+    setSessionQr(null);
+  }
+
   function logout() {
     setUserToken("");
     localStorage.removeItem("userToken");
@@ -333,14 +344,30 @@ export default function App() {
             <h3>Sessions</h3>
             <ul className="list">
               {sessions.map((session) => (
-                <li key={session.id}>
-                  <button onClick={() => loadAttendance(session.id)} className="link">
-                    {session.date} {session.start_time} - {session.end_time}
+                <li key={session.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <button onClick={() => loadAttendance(session.id)} className="link" style={{ textAlign: "left" }}>
+                    {session.date} <br /> <small>{session.start_time} - {session.end_time}</small>
+                  </button>
+                  <button onClick={() => showQr(session.id)} style={{ fontSize: "12px", padding: "6px 10px" }}>
+                    Show QR
                   </button>
                 </li>
               ))}
             </ul>
           </div>
+
+          {sessionQr && (
+            <div className="card" style={{ textAlign: "center" }}>
+              <div className="card-header">
+                <h3>Session QR</h3>
+                <button onClick={closeQr} className="link">Close</button>
+              </div>
+              <img src={sessionQr.qrDataUrl} alt="Session QR" style={{ width: "100%", maxWidth: "300px" }} />
+              <p className="muted" style={{ fontSize: "10px", wordBreak: "break-all" }}>
+                Token: {sessionQr.token}
+              </p>
+            </div>
+          )}
 
           <div className="card">
             <h3>Attendance</h3>
