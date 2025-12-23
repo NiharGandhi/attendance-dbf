@@ -11,3 +11,7 @@ export function getWindowStart(date = new Date(), minutes = 5) {
 export function getWindowEnd(windowStart, minutes = 5) {
   return new Date(windowStart.getTime() + minutes * 60 * 1000);
 }
+
+export function toIsoDateTime(date, time) {
+  return new Date(`${date}T${time}:00.000Z`).toISOString();
+}

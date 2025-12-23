@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "../utils/time.js";
-import { validateToken } from "../utils/qr.js";
 
 export function attendanceRoutes(db) {
   const router = Router();
@@ -21,8 +20,15 @@ export function attendanceRoutes(db) {
       return res.status(404).json({ error: "session_not_found" });
     }
 
-    if (!validateToken(sessionId, token)) {
-      return res.status(401).json({ status: "invalid_token" });
+    const tokenRecord = await db.get(
+      `SELECT token FROM session_tokens
+       WHERE session_id = ? AND token = ? AND valid_to >= ?`,
+      sessionId,
+      token,
+      new Date().toISOString()
+    );
+    if (!tokenRecord) {
+      return res.status(401).json({ error: "invalid_token" });
     }
 
     const existing = await db.get(

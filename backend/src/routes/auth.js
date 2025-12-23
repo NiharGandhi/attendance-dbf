@@ -7,6 +7,12 @@ import { hashPassword, verifyPassword } from "../utils/password.js";
 export function authRoutes(db) {
   const router = Router();
 
+  function sanitizeUser(user) {
+    if (!user) return null;
+    const { password_hash, ...safeUser } = user;
+    return safeUser;
+  }
+
   router.post("/signup", async (req, res) => {
     const { name, email, password, mahatmaId } = req.body || {};
     if (!name || !email || !password) {
@@ -42,8 +48,9 @@ export function authRoutes(db) {
 
     const user = await db.get("SELECT * FROM users WHERE id = ?", id);
     const token = uuidv4();
-    storeUserSession(token, user);
-    return res.status(201).json({ token, user });
+    const safeUser = sanitizeUser(user);
+    storeUserSession(token, safeUser);
+    return res.status(201).json({ token, user: safeUser });
   });
 
   router.post("/login", async (req, res) => {
@@ -58,8 +65,9 @@ export function authRoutes(db) {
     }
 
     const token = uuidv4();
-    storeUserSession(token, user);
-    return res.json({ token, user });
+    const safeUser = sanitizeUser(user);
+    storeUserSession(token, safeUser);
+    return res.json({ token, user: safeUser });
   });
 
   return router;

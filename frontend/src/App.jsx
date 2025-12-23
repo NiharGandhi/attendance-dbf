@@ -19,6 +19,11 @@ export default function App() {
   const [manualEntry, setManualEntry] = useState({ sessionId: "", userId: "" });
   const [online, setOnline] = useState(navigator.onLine);
   const [authMode, setAuthMode] = useState("signup");
+  const [authView, setAuthView] = useState("user");
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [userAttendance, setUserAttendance] = useState([]);
 
   const activeView = useMemo(() => {
     if (adminToken) return "admin";
@@ -44,6 +49,24 @@ export default function App() {
   useEffect(() => {
     api.listSessions().then(({ sessions }) => setSessions(sessions)).catch(() => null);
   }, []);
+
+  useEffect(() => {
+    if (adminToken) {
+      loadUsers();
+    }
+  }, [adminToken]);
+
+  function getDeviceId() {
+    try {
+      const stored = localStorage.getItem("deviceId");
+      if (stored) return stored;
+      const generated = crypto.randomUUID ? crypto.randomUUID() : `device-${Date.now()}`;
+      localStorage.setItem("deviceId", generated);
+      return generated;
+    } catch (error) {
+      return crypto.randomUUID ? crypto.randomUUID() : `device-${Date.now()}`;
+    }
+  }
 
   async function handleSignUp() {
     setStatus("");
@@ -94,7 +117,7 @@ export default function App() {
       const response = await api.markAttendance(userToken, {
         sessionId: data.sessionId,
         token: data.token,
-        deviceId: navigator.userAgent,
+        deviceId: getDeviceId(),
       });
       if (response.status === "already_marked") {
         setStatus("Attendance already marked for this session.");
@@ -108,9 +131,13 @@ export default function App() {
 
   async function loginAdmin() {
     setStatus("");
-    const { token } = await api.adminLogin(adminForm);
-    localStorage.setItem("adminToken", token);
-    setAdminToken(token);
+    try {
+      const { token } = await api.adminLogin(adminForm);
+      localStorage.setItem("adminToken", token);
+      setAdminToken(token);
+    } catch (error) {
+      setStatus(`Admin login failed: ${error.message}`);
+    }
   }
 
   async function createSession(event) {
@@ -121,39 +148,72 @@ export default function App() {
       startTime: data.get("startTime"),
       endTime: data.get("endTime"),
     };
-    const { session } = await api.adminCreateSession(adminToken, payload);
-    setSessions((prev) => [session, ...prev]);
-    event.target.reset();
+    setSessionLoading(true);
+    try {
+      const { session } = await api.adminCreateSession(adminToken, payload);
+      setSessions((prev) => [session, ...prev]);
+      event.target.reset();
+      setStatus("Session created.");
+    } catch (error) {
+      setStatus(`Create session failed: ${error.message}`);
+    } finally {
+      setSessionLoading(false);
+    }
   }
 
   async function loadAttendance(sessionId) {
     setSelectedSession(sessionId);
-    const { attendance } = await api.adminListAttendance(adminToken, sessionId);
-    setAttendanceList(attendance);
-  }
-
-  async function loadStats() {
-    const summary = await api.adminStats(adminToken);
-    setStats(summary);
-  }
-
-  async function submitManual() {
-    await api.adminManualAttendance(adminToken, manualEntry);
-    setStatus("Manual attendance saved.");
-    if (manualEntry.sessionId) {
-      loadAttendance(manualEntry.sessionId);
+    try {
+      const { attendance } = await api.adminListAttendance(adminToken, sessionId);
+      setAttendanceList(attendance);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Failed to load attendance: ${error.message}`);
     }
   }
 
-  const [sessionQr, setSessionQr] = useState(null);
-
-  async function showQr(sessionId) {
-    const { qrDataUrl, token, validFrom, validTo } = await api.getSessionQr(sessionId);
-    setSessionQr({ qrDataUrl, token, validFrom, validTo, sessionId });
+  async function loadStats() {
+    try {
+      const summary = await api.adminStats(adminToken);
+      setStats(summary);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Failed to load stats: ${error.message}`);
+    }
   }
 
-  function closeQr() {
-    setSessionQr(null);
+  async function loadUsers() {
+    try {
+      const { users } = await api.adminUsers(adminToken);
+      setAdminUsers(users);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Failed to load users: ${error.message}`);
+    }
+  }
+
+  async function loadUserAttendance(userId) {
+    setSelectedUserId(userId);
+    try {
+      const { attendance } = await api.adminUserAttendance(adminToken, userId);
+      setUserAttendance(attendance);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Failed to load user attendance: ${error.message}`);
+    }
+  }
+
+  async function submitManual() {
+    try {
+      await api.adminManualAttendance(adminToken, manualEntry);
+      setStatus("Manual attendance saved.");
+      if (manualEntry.sessionId) {
+        await loadAttendance(manualEntry.sessionId);
+      }
+    } catch (error) {
+      console.error(error);
+      setStatus(`Manual attendance failed: ${error.message}`);
+    }
   }
 
   function logout() {
@@ -164,6 +224,32 @@ export default function App() {
   function adminLogout() {
     setAdminToken("");
     localStorage.removeItem("adminToken");
+  }
+
+  const recentUserAttendance = userAttendance.slice(0, 14);
+
+  async function downloadCsv(sessionId) {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || "http://localhost:4000/api"}/admin/attendance/export?sessionId=${sessionId}`,
+        { headers: { Authorization: `Bearer ${adminToken}` } }
+      );
+      if (!response.ok) {
+        throw new Error("export_failed");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `attendance-${sessionId}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Export failed: ${error.message}`);
+    }
   }
 
   return (
@@ -179,100 +265,116 @@ export default function App() {
       {status && <div className="status">{status}</div>}
 
       {activeView === "login" && (
-        <section className="card">
-          <div className="tab-row">
-            <button
-              onClick={() => setAuthMode("signup")}
-              className={authMode === "signup" ? "tab active" : "tab"}
-            >
-              Sign Up
-            </button>
-            <button
-              onClick={() => setAuthMode("login")}
-              className={authMode === "login" ? "tab active" : "tab"}
-            >
-              Login
-            </button>
-          </div>
+        <section className="auth-shell">
+          {authView === "user" ? (
+            <>
+              <div className="hero-card">
+                <h2>Welcome</h2>
+                <p className="muted">Sign in to mark attendance for today’s satsang.</p>
+              </div>
+              <div className="card">
+                <div className="tab-row">
+                  <button
+                    onClick={() => setAuthMode("signup")}
+                    className={authMode === "signup" ? "tab active" : "tab"}
+                  >
+                    Sign Up
+                  </button>
+                  <button
+                    onClick={() => setAuthMode("login")}
+                    className={authMode === "login" ? "tab active" : "tab"}
+                  >
+                    Login
+                  </button>
+                </div>
 
-          {authMode === "signup" ? (
-            <div className="stack">
-              <label>
-                Full name
-                <input
-                  value={signUpForm.name}
-                  onChange={(event) => setSignUpForm({ ...signUpForm, name: event.target.value })}
-                  placeholder="Your name"
-                />
-              </label>
-              <label>
-                Email
-                <input
-                  type="email"
-                  value={signUpForm.email}
-                  onChange={(event) => setSignUpForm({ ...signUpForm, email: event.target.value })}
-                  placeholder="name@example.com"
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  value={signUpForm.password}
-                  onChange={(event) => setSignUpForm({ ...signUpForm, password: event.target.value })}
-                />
-              </label>
-              <label>
-                Mahatma ID (optional)
-                <input
-                  value={signUpForm.mahatmaId}
-                  onChange={(event) => setSignUpForm({ ...signUpForm, mahatmaId: event.target.value })}
-                  placeholder="If you have a Mahatma ID"
-                />
-              </label>
-              <button onClick={handleSignUp} className="primary">Create Account</button>
-            </div>
+                {authMode === "signup" ? (
+                  <div className="stack">
+                    <label>
+                      Full name
+                      <input
+                        value={signUpForm.name}
+                        onChange={(event) => setSignUpForm({ ...signUpForm, name: event.target.value })}
+                        placeholder="Your name"
+                      />
+                    </label>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={signUpForm.email}
+                        onChange={(event) => setSignUpForm({ ...signUpForm, email: event.target.value })}
+                        placeholder="name@example.com"
+                      />
+                    </label>
+                    <label>
+                      Password
+                      <input
+                        type="password"
+                        value={signUpForm.password}
+                        onChange={(event) => setSignUpForm({ ...signUpForm, password: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Mahatma ID (optional)
+                      <input
+                        value={signUpForm.mahatmaId}
+                        onChange={(event) => setSignUpForm({ ...signUpForm, mahatmaId: event.target.value })}
+                        placeholder="If you have a Mahatma ID"
+                      />
+                    </label>
+                    <button onClick={handleSignUp} className="primary">Create Account</button>
+                  </div>
+                ) : (
+                  <div className="stack">
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={loginForm.email}
+                        onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Password
+                      <input
+                        type="password"
+                        value={loginForm.password}
+                        onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                      />
+                    </label>
+                    <button onClick={handleLogin} className="secondary">Login</button>
+                  </div>
+                )}
+              </div>
+              <button className="ghost" onClick={() => setAuthView("admin")}>
+                Admin Portal
+              </button>
+            </>
           ) : (
-            <div className="stack">
+            <div className="card">
+              <div className="card-header">
+                <h2>Admin Login</h2>
+                <button onClick={() => setAuthView("user")} className="link">Back</button>
+              </div>
               <label>
-                Email
+                Username
                 <input
-                  type="email"
-                  value={loginForm.email}
-                  onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+                  value={adminForm.username}
+                  onChange={(event) => setAdminForm({ ...adminForm, username: event.target.value })}
                 />
               </label>
               <label>
                 Password
                 <input
                   type="password"
-                  value={loginForm.password}
-                  onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                  value={adminForm.password}
+                  onChange={(event) => setAdminForm({ ...adminForm, password: event.target.value })}
                 />
               </label>
-              <button onClick={handleLogin} className="secondary">Login</button>
+              <button onClick={loginAdmin}>Login as Admin</button>
             </div>
           )}
-
-          <div className="divider" />
-
-          <h2>Admin Login</h2>
-          <label>
-            Username
-            <input
-              value={adminForm.username}
-              onChange={(event) => setAdminForm({ ...adminForm, username: event.target.value })}
-            />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={adminForm.password}
-              onChange={(event) => setAdminForm({ ...adminForm, password: event.target.value })}
-            />
-          </label>
-          <button onClick={loginAdmin}>Login as Admin</button>
         </section>
       )}
 
@@ -317,7 +419,9 @@ export default function App() {
               <input name="date" type="date" required />
               <input name="startTime" type="time" required />
               <input name="endTime" type="time" required />
-              <button type="submit" className="primary">Create</button>
+              <button type="submit" className="primary" disabled={sessionLoading}>
+                {sessionLoading ? "Creating..." : "Create"}
+              </button>
             </form>
           </div>
 
@@ -344,30 +448,19 @@ export default function App() {
             <h3>Sessions</h3>
             <ul className="list">
               {sessions.map((session) => (
-                <li key={session.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <button onClick={() => loadAttendance(session.id)} className="link" style={{ textAlign: "left" }}>
-                    {session.date} <br /> <small>{session.start_time} - {session.end_time}</small>
-                  </button>
-                  <button onClick={() => showQr(session.id)} style={{ fontSize: "12px", padding: "6px 10px" }}>
-                    Show QR
-                  </button>
+                <li key={session.id}>
+                  <div className="list-row">
+                    <button onClick={() => loadAttendance(session.id)} className="link">
+                      {session.date} {session.start_time} - {session.end_time}
+                    </button>
+                    <button className="ghost small" onClick={() => downloadCsv(session.id)}>
+                      Export CSV
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
           </div>
-
-          {sessionQr && (
-            <div className="card" style={{ textAlign: "center" }}>
-              <div className="card-header">
-                <h3>Session QR</h3>
-                <button onClick={closeQr} className="link">Close</button>
-              </div>
-              <img src={sessionQr.qrDataUrl} alt="Session QR" style={{ width: "100%", maxWidth: "300px" }} />
-              <p className="muted" style={{ fontSize: "10px", wordBreak: "break-all" }}>
-                Token: {sessionQr.token}
-              </p>
-            </div>
-          )}
 
           <div className="card">
             <h3>Attendance</h3>
@@ -383,6 +476,51 @@ export default function App() {
                 </li>
               ))}
             </ul>
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h3>Users</h3>
+              <button className="ghost small" onClick={loadUsers}>Refresh</button>
+            </div>
+            <ul className="list">
+              {adminUsers.map((user) => (
+                <li key={user.id}>
+                  <div className="list-row">
+                    <button onClick={() => loadUserAttendance(user.id)} className="link">
+                      {user.name || user.email}
+                    </button>
+                    <span className="pill">{user.attendance_count} sessions</span>
+                  </div>
+                  <p className="muted">{user.email} {user.mahatma_id ? `• ${user.mahatma_id}` : ""}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="card">
+            <h3>User Attendance</h3>
+            {selectedUserId ? (
+              <>
+                <p className="muted">User ID: {selectedUserId}</p>
+                <div className="heatmap">
+                  {recentUserAttendance.map((record) => (
+                    <div key={record.marked_at} className="heatmap-cell">
+                      <span>{record.date}</span>
+                    </div>
+                  ))}
+                </div>
+                <ul className="list">
+                  {userAttendance.map((record) => (
+                    <li key={`${record.date}-${record.start_time}`}>
+                      {record.date} {record.start_time} - {record.end_time}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="muted">Select a user to view attendance history.</p>
+            )}
           </div>
         </section>
       )}
